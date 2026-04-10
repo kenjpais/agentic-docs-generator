@@ -16,12 +16,12 @@ class JiraClient:
     def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None,
                  email: Optional[str] = None):
         """
-        Initialize Jira client with authentication.
+        Initialize Jira client with optional authentication.
 
         Args:
             base_url: Jira instance URL (e.g., https://yourcompany.atlassian.net)
-            token: API token for authentication
-            email: Email address for authentication (used with token)
+            token: API token for authentication (optional for public Jira)
+            email: Email address for authentication (optional for public Jira)
         """
         self.base_url = base_url or os.getenv('JIRA_BASE_URL')
         token = token or os.getenv('JIRA_API_TOKEN')
@@ -29,16 +29,17 @@ class JiraClient:
 
         if not self.base_url:
             raise ValueError("JIRA_BASE_URL is required")
-        if not token:
-            raise ValueError("JIRA_API_TOKEN is required")
-        if not email:
-            raise ValueError("JIRA_EMAIL is required")
 
-        # Authenticate using email and API token
-        self.client = JIRA(
-            server=self.base_url,
-            basic_auth=(email, token)
-        )
+        # Initialize Jira client with or without authentication
+        if token and email:
+            logger.info("Initializing Jira client with authentication")
+            self.client = JIRA(
+                server=self.base_url,
+                basic_auth=(email, token)
+            )
+        else:
+            logger.info("Initializing Jira client for public access (no authentication)")
+            self.client = JIRA(server=self.base_url)
 
     def fetch_jira_ticket(self, jira_id: str) -> Optional[JiraTicket]:
         """

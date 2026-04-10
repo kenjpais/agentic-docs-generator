@@ -3,7 +3,8 @@
 import os
 import time
 from typing import Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 class GeminiClient:
     """Client for interacting with Google Gemini API."""
 
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-pro"):
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "models/gemini-2.5-flash"):
         """
         Initialize Gemini client.
 
@@ -25,8 +26,7 @@ class GeminiClient:
         if not api_key:
             raise ValueError("GEMINI_API_KEY is required")
 
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
 
     def generate(self, prompt: str, max_retries: int = 3) -> str:
@@ -44,9 +44,10 @@ class GeminiClient:
             try:
                 logger.info(f"Generating content with Gemini (attempt {attempt + 1}/{max_retries})")
 
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
                         temperature=0.7,
                         top_p=0.8,
                         top_k=40,
@@ -84,14 +85,33 @@ class GeminiClient:
             Generated text content
         """
         try:
-            response = self.model.generate_content(
-                prompt,
-                safety_settings={
-                    'HARASSMENT': 'block_none',
-                    'HATE_SPEECH': 'block_none',
-                    'SEXUALLY_EXPLICIT': 'block_none',
-                    'DANGEROUS_CONTENT': 'block_none',
-                }
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.7,
+                    top_p=0.8,
+                    top_k=40,
+                    max_output_tokens=2048,
+                    safety_settings=[
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_HARASSMENT',
+                            threshold='BLOCK_NONE'
+                        ),
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_HATE_SPEECH',
+                            threshold='BLOCK_NONE'
+                        ),
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_SEXUALLY_EXPLICIT',
+                            threshold='BLOCK_NONE'
+                        ),
+                        types.SafetySetting(
+                            category='HARM_CATEGORY_DANGEROUS_CONTENT',
+                            threshold='BLOCK_NONE'
+                        ),
+                    ]
+                )
             )
             return response.text if response.text else ""
         except Exception as e:

@@ -40,10 +40,10 @@ def validate_environment() -> bool:
     required_vars = [
         'GITHUB_TOKEN',
         'JIRA_BASE_URL',
-        'JIRA_API_TOKEN',
-        'JIRA_EMAIL',
         'GEMINI_API_KEY'
     ]
+
+    optional_vars = ['JIRA_API_TOKEN', 'JIRA_EMAIL']
 
     missing_vars = []
     for var in required_vars:
@@ -53,6 +53,10 @@ def validate_environment() -> bool:
     if missing_vars:
         logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
         return False
+
+    # Log info about optional Jira auth
+    if not os.getenv('JIRA_API_TOKEN') or not os.getenv('JIRA_EMAIL'):
+        logger.info("Jira authentication not configured - will access public Jira tickets only")
 
     logger.info("All required environment variables are set")
     return True
