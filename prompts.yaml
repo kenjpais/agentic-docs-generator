@@ -1,0 +1,289 @@
+# Agentic Documentation Generation Prompts
+# Based on https://github.com/Prashanth684/agentic-docs-guide
+
+metadata:
+  version: "1.0.0"
+  framework_version: "1.1"
+  updated: "2026-04-10"
+
+system_instructions:
+  base: |
+    You are an expert technical documentation architect specializing in creating agentic documentation
+    for software repositories. You follow the agentic documentation framework principles:
+
+    1. Repository knowledge is the system of record
+    2. Optimize for agent legibility first
+    3. Enforce architecture, not taste
+    4. Living documentation that stays current
+
+    Generate precise, technical documentation based on actual code changes, PR descriptions, and Jira tickets.
+    Do not hallucinate or add speculative details. Use only the provided context.
+
+prompts:
+  # ADR (Architecture Decision Record)
+  adr:
+    name: "Architecture Decision Record"
+    template_file: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+    system_instruction: |
+      You are an expert software architect generating an Architecture Decision Record (ADR)
+      following the agentic documentation framework. ADRs should be lightweight, focused,
+      and mechanically verifiable.
+
+      Follow the ADR format from the agentic-docs-guide framework.
+      Use only the information provided from the PR and Jira context.
+      Be precise and technical - no hallucinations.
+
+    user_prompt: |
+      Generate an Architecture Decision Record (ADR) using the following context.
+
+      FRAMEWORK GUIDELINES:
+      {framework_guidelines}
+
+      CONTEXT:
+      - Feature Title: {feature_title}
+      - PR Number: #{pr_number}
+      - Jira Key: {jira_key}
+      - Problem Statement: {problem}
+      - Solution Summary: {solution_summary}
+      - Code Changes Summary:
+      {code_changes}
+
+      - Files Modified ({files_count} files):
+      {modified_files}
+
+      - Jira Information:
+        * Title: {jira_title}
+        * Description: {jira_description}
+        * Acceptance Criteria: {acceptance_criteria}
+
+      - Discussion Points: {key_discussions}
+
+      REQUIREMENTS:
+      - Follow the ADR template structure from the framework
+      - Include ADR number (use PR number as basis)
+      - Add metadata: date, status, decision-makers
+      - Focus on the "why" not just the "what"
+      - Reference specific files and code locations
+      - Be concise and technical
+      - No speculation - use only provided context
+
+  # Execution Plan
+  exec_plan:
+    name: "Execution Plan"
+    template_file: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+    system_instruction: |
+      You are an expert engineering planner generating an execution plan
+      following the agentic documentation framework. Execution plans document
+      how features were implemented, not how they should be implemented.
+
+      Follow the exec-plan format from the agentic-docs-guide framework.
+      Base the plan on actual code changes from the PR.
+
+    user_prompt: |
+      Generate an Execution Plan documenting how this feature was implemented.
+
+      FRAMEWORK GUIDELINES:
+      {framework_guidelines}
+
+      CONTEXT:
+      - Feature Title: {feature_title}
+      - PR Number: #{pr_number}
+      - Jira Key: {jira_key}
+      - Problem Statement: {problem}
+      - Solution Summary: {solution_summary}
+      - Code Changes Summary:
+      {code_changes}
+
+      - Files Modified ({files_count} files):
+      {modified_files}
+
+      - Total Changes: +{additions} -{deletions} lines
+      - Affected Components: {affected_components}
+
+      - Jira Information:
+        * Acceptance Criteria: {acceptance_criteria}
+        * Key Discussions: {key_discussions}
+
+      REQUIREMENTS:
+      - Document the implementation steps based on actual code changes
+      - Include testing approach
+      - Document verification steps
+      - Add rollback plan
+      - Reference specific code locations (file paths, no line numbers)
+      - Be technical and precise
+
+  # AGENTS.md (Repository Navigation)
+  agents_md:
+    name: "AGENTS.md - Repository Navigation"
+    template_file: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+    system_instruction: |
+      You are creating the AGENTS.md file - the single entry point for AI agents
+      to navigate the repository. This is the most critical file in the framework.
+
+      Maximum length: 150 lines. This is a TABLE OF CONTENTS, not a manual.
+
+    user_prompt: |
+      Generate AGENTS.md for repository: {repo_name}
+
+      FRAMEWORK GUIDELINES:
+      {framework_guidelines}
+
+      REPOSITORY CONTEXT:
+      - Repository: {repo_owner}/{repo_name}
+      - Description: {repo_description}
+      - Main Language: {language}
+      - Key Components: {components}
+      - Recent Features: {recent_features}
+
+      REQUIREMENTS:
+      - Maximum 150 lines
+      - Quick navigation by intent
+      - Component boundaries (ASCII diagram)
+      - Core concepts (table with links)
+      - Key invariants
+      - Critical code locations (file paths)
+      - Build & test commands
+      - NO detailed explanations (link to agentic/ instead)
+
+  # Design Document
+  design_doc:
+    name: "Design Document"
+    template_file: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+    system_instruction: |
+      You are creating a design document that explains the architectural
+      approach and technical decisions for a feature or component.
+
+    user_prompt: |
+      Generate a Design Document for this feature.
+
+      FRAMEWORK GUIDELINES:
+      {framework_guidelines}
+
+      CONTEXT:
+      - Feature: {feature_title}
+      - Problem: {problem}
+      - Solution: {solution_summary}
+      - Code Changes: {code_changes}
+      - Components Affected: {affected_components}
+
+      REQUIREMENTS:
+      - Include design rationale
+      - Document alternatives considered
+      - Show component relationships
+      - Include data flow diagrams (as ASCII art or mermaid)
+      - Reference implementation (file paths)
+
+  # Domain Concept Documentation
+  domain_concept:
+    name: "Domain Concept"
+    template_file: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+    system_instruction: |
+      You are documenting a domain concept - a business or technical concept
+      that the codebase deals with.
+
+    user_prompt: |
+      Generate domain concept documentation.
+
+      FRAMEWORK GUIDELINES:
+      {framework_guidelines}
+
+      CONTEXT:
+      - Concept Name: {concept_name}
+      - Definition: {definition}
+      - Code Location: {code_location}
+      - Related Concepts: {related_concepts}
+      - Usage Examples: {usage_examples}
+
+      REQUIREMENTS:
+      - Clear definition (1-2 sentences)
+      - Purpose and usage
+      - Relationships to other concepts
+      - Code references (file paths)
+      - Validation rules (if applicable)
+
+  # Product Specification
+  product_spec:
+    name: "Product Specification"
+    template_file: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+    system_instruction: |
+      You are creating a product specification that documents what a feature
+      does from a user/product perspective.
+
+    user_prompt: |
+      Generate a Product Specification.
+
+      FRAMEWORK GUIDELINES:
+      {framework_guidelines}
+
+      CONTEXT:
+      - Feature: {feature_title}
+      - Description: {jira_description}
+      - Acceptance Criteria: {acceptance_criteria}
+      - User Stories: {user_stories}
+
+      REQUIREMENTS:
+      - User-facing description
+      - Use cases
+      - Expected behavior
+      - Constraints and limitations
+      - Success criteria
+
+  # Technical Debt Tracker Entry
+  tech_debt:
+    name: "Technical Debt Entry"
+    template_file: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+    system_instruction: |
+      You are documenting technical debt or known issues that need to be
+      addressed in future work.
+
+    user_prompt: |
+      Generate a Technical Debt entry.
+
+      CONTEXT:
+      - Issue: {issue_description}
+      - Impact: {impact}
+      - Location: {code_location}
+      - Workaround: {workaround}
+
+      REQUIREMENTS:
+      - Clear description of the issue
+      - Why it exists (constraints, deadlines)
+      - Impact on codebase
+      - Proposed remediation
+      - Priority/urgency
+
+# Framework file references
+framework_files:
+  main_framework: "templates/agentic-docs-guide/AGENTIC_DOCS_FRAMEWORK.md"
+  rulebook: "templates/agentic-docs-guide/AGENTIC_DOCS_RULEBOOK.md"
+  readme: "templates/agentic-docs-guide/AGENTIC_DOCS_README.md"
+  openshift_guidance: "templates/agentic-docs-guide/OPENSHIFT_SPECIFIC_GUIDANCE.md"
+  metrics_guide: "templates/agentic-docs-guide/METRICS_GUIDE.md"
+  scoring_guide: "templates/agentic-docs-guide/SCORING_GUIDE.md"
+
+# Output structure following agentic-docs-guide
+output_structure:
+  root_files:
+    - "AGENTS.md"
+    - "ARCHITECTURE.md"
+
+  agentic_dir:
+    - "agentic/design-docs/index.md"
+    - "agentic/design-docs/core-beliefs.md"
+    - "agentic/design-docs/component-architecture.md"
+    - "agentic/design-docs/data-flow.md"
+    - "agentic/domain/index.md"
+    - "agentic/domain/glossary.md"
+    - "agentic/exec-plans/template.md"
+    - "agentic/exec-plans/tech-debt-tracker.md"
+    - "agentic/product-specs/index.md"
+    - "agentic/decisions/index.md"
+    - "agentic/decisions/adr-template.md"
+    - "agentic/references/"
+    - "agentic/generated/"
+    - "agentic/DESIGN.md"
+    - "agentic/DEVELOPMENT.md"
+    - "agentic/TESTING.md"
+    - "agentic/RELIABILITY.md"
+    - "agentic/SECURITY.md"
+    - "agentic/QUALITY_SCORE.md"

@@ -15,12 +15,6 @@ Get up and running with Agentic Documentation Generator in 5 minutes!
 2. Select scopes: `repo` (Full control of private repositories)
 3. Generate token and copy it
 
-### Jira API Token
-1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
-2. Click "Create API token"
-3. Give it a name and copy the token
-4. Note your Jira email address
-
 ### Gemini API Key
 1. Go to https://makersuite.google.com/app/apikey
 2. Create API key

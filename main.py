@@ -15,6 +15,7 @@ from jira_client import JiraClient
 from context_builder import ContextBuilder
 from gemini_client import GeminiClient
 from doc_generator import DocumentationGenerator
+from agentic_doc_generator import AgenticDocumentationGenerator
 from utils import (
     load_environment_variables,
     validate_environment,
@@ -61,6 +62,12 @@ def main():
         action='store_true',
         help='Skip PRs without Jira tickets (default: True)'
     )
+    parser.add_argument(
+        '--mode',
+        choices=['simple', 'full'],
+        default='full',
+        help='Documentation generation mode: simple (ADR+exec-plan only) or full (complete agentic structure) (default: full)'
+    )
 
     args = parser.parse_args()
 
@@ -106,40 +113,67 @@ def main():
             logger.warning("No features with valid Jira links found")
             sys.exit(0)
 
-        # Generate documentation
-        logger.info("Generating documentation")
-        doc_generator = DocumentationGenerator(gemini_client, args.output)
+        # Generate documentation based on mode
+        logger.info(f"Generating documentation (mode: {args.mode})")
 
-        generated_docs = []
-        for i, feature in enumerate(features, 1):
-            logger.info(f"Processing feature {i}/{len(features)}")
-            try:
-                file_paths = doc_generator.generate_and_save(feature, repo_name)
+        if args.mode == 'full':
+            # Use comprehensive agentic documentation generator
+            agentic_gen = AgenticDocumentationGenerator(gemini_client, args.output)
+            all_paths = agentic_gen.generate_full_documentation(features, repo_name, repo_owner)
+
+            generated_docs = []
+            for feature in features:
                 generated_docs.append({
                     'feature': feature,
-                    'files': file_paths
+                    'files': all_paths
                 })
-            except Exception as e:
-                logger.error(f"Error generating docs for PR #{feature.pr.number}: {str(e)}")
-                continue
+        else:
+            # Use simple generator (ADR + exec-plan only)
+            doc_generator = DocumentationGenerator(gemini_client, args.output)
+
+            generated_docs = []
+            for i, feature in enumerate(features, 1):
+                logger.info(f"Processing feature {i}/{len(features)}")
+                try:
+                    file_paths = doc_generator.generate_and_save(feature, repo_name)
+                    generated_docs.append({
+                        'feature': feature,
+                        'files': file_paths
+                    })
+                except Exception as e:
+                    logger.error(f"Error generating docs for PR #{feature.pr.number}: {str(e)}")
+                    continue
 
         # Print summary
         print("\n" + "=" * 70)
         print("Documentation Generation Complete")
         print("=" * 70)
-        print(f"\nTotal PRs fetched: {len(prs)}")
+        print(f"\nMode: {args.mode.upper()}")
+        print(f"Total PRs fetched: {len(prs)}")
         print(f"Features with Jira links: {len(features)}")
         print(f"Documentation generated: {len(generated_docs)}")
         print(f"\nOutput directory: {Path(args.output).absolute()}")
 
-        if generated_docs:
+        if args.mode == 'full':
+            print("\nGenerated agentic documentation structure:")
+            print(f"  - {repo_name}/agentic-docs/")
+            print(f"    ├── AGENTS.md (repository navigation)")
+            print(f"    ├── decisions/ (ADRs)")
+            print(f"    ├── exec-plans/ (execution plans)")
+            print(f"    ├── design-docs/ (design documentation)")
+            print(f"    ├── product-specs/ (feature specifications)")
+            print(f"    ├── domain/ (concepts and workflows)")
+            print(f"    └── references/ (external knowledge)")
+
+        if generated_docs and args.mode == 'simple':
             print("\nGenerated documentation:")
             for doc in generated_docs:
                 feature = doc['feature']
                 files = doc['files']
                 print(f"\n  PR #{feature.pr.number}: {feature.pr.title}")
                 print(f"    Jira: {feature.jira.key if feature.jira else 'N/A'}")
-                print(f"    Location: {files['directory']}")
+                if 'directory' in files:
+                    print(f"    Location: {files['directory']}")
 
         print("\n" + "=" * 70)
         logger.info("Documentation generation complete")
