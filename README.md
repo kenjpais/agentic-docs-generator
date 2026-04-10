@@ -1,6 +1,6 @@
 # Agentic Documentation Generator
 
-An automated tool that generates high-quality Architecture Decision Records (ADRs) and execution plans from GitHub Pull Requests and Jira tickets using Google's Gemini LLM.
+An automated tool that generates comprehensive agentic documentation for software repositories following the [agentic-docs-guide framework](https://github.com/Prashanth684/agentic-docs-guide). Generates complete documentation structures from GitHub Pull Requests and Jira tickets using Google's Gemini LLM.
 
 ## Overview
 
@@ -9,33 +9,62 @@ This tool helps engineering teams automatically document their work by:
 1. Fetching merged Pull Requests from GitHub repositories
 2. Linking PRs to their associated Jira tickets
 3. Building comprehensive context from code changes and Jira discussions
-4. Generating structured ADRs and execution plans using Gemini AI
-5. Saving documentation in a well-organized directory structure
+4. Generating structured agentic documentation using Gemini AI
+5. Following the complete agentic-docs-guide framework structure
+6. Creating repository navigation and living documentation
 
 ## Features
 
+### Documentation Generation
+- **Complete Agentic Structure**: Generates full documentation following agentic-docs-guide framework
+- **AGENTS.md**: Single entry point for repository navigation
+- **ADRs**: Architecture Decision Records in `decisions/`
+- **Execution Plans**: Implementation documentation in `exec-plans/`
+- **Design Documentation**: Architectural designs in `design-docs/`
+- **Product Specifications**: Feature specs in `product-specs/`
+- **Domain Models**: Concepts and workflows in `domain/`
+
+### Intelligent Features
 - **Automated PR Fetching**: Retrieves recently merged PRs from any GitHub repository
 - **Smart Jira Linking**: Automatically extracts Jira ticket IDs from PR titles, descriptions, or branch names
-- **Context-Rich Documentation**: Combines code changes, Jira requirements, and discussions into comprehensive context
+- **Context-Rich Documentation**: Combines code changes, Jira requirements, and discussions
 - **AI-Powered Generation**: Uses Google Gemini to generate technical, precise documentation
-- **Structured Output**: Organizes documentation by repository and feature with metadata
-- **Modular Architecture**: Easy to extend and customize for different workflows
+- **Framework Integration**: Prompts include relevant agentic-docs-guide guidelines
+- **Flexible Modes**: Simple (ADR+exec-plan only) or Full (complete structure)
+- **YAML-Based Prompts**: Easy to customize and version control
+- **Modular Architecture**: Easy to extend and customize
 
 ## Architecture
 
 The system consists of the following modules:
 
 ```
-├── github_client.py      # GitHub API integration
-├── jira_client.py        # Jira API integration
-├── context_builder.py    # Links PRs to Jira and builds context
-├── gemini_client.py      # Gemini LLM integration
-├── prompt_templates.py   # Documentation templates and prompts
-├── doc_generator.py      # Documentation generation and saving
-├── models.py             # Data models
-├── utils.py              # Utility functions
-└── main.py               # CLI entry point
+├── main.py                        # CLI entry point with mode selection
+├── github_client.py               # GitHub API integration
+├── jira_client.py                 # Jira API integration (with public access)
+├── context_builder.py             # Links PRs to Jira and builds context
+├── gemini_client.py               # Gemini LLM integration (google-genai)
+├── prompt_loader.py               # Load prompts from YAML configuration
+├── prompts.yaml                   # Centralized prompt configuration
+├── doc_generator.py               # Simple doc generation (ADR+exec-plan)
+├── agentic_doc_generator.py       # Full agentic structure generation
+├── models.py                      # Data models
+├── utils.py                       # Utility functions
+└── templates/agentic-docs-guide/  # Framework templates and guidelines
 ```
+
+### Documentation Modes
+
+**Simple Mode** (`--mode simple`):
+- Generates ADRs and execution plans only
+- Organized by PR in traditional structure
+- Quick generation for basic documentation needs
+
+**Full Mode** (`--mode full`, default):
+- Generates complete agentic documentation structure
+- Follows agentic-docs-guide framework
+- Creates AGENTS.md, design docs, product specs, domain models
+- Organized in standardized agentic/ directory structure
 
 ## Prerequisites
 
@@ -105,7 +134,7 @@ GEMINI_API_KEY=your_gemini_api_key
 
 ## Usage
 
-Basic usage:
+Basic usage (full agentic documentation):
 
 ```bash
 python main.py --repo owner/repo-name
@@ -117,30 +146,76 @@ python main.py --repo owner/repo-name
 --repo REPO          Repository identifier (format: owner/repo) [REQUIRED]
 --limit LIMIT        Maximum number of PRs to fetch (default: 10)
 --output OUTPUT      Output directory (default: output)
+--mode MODE          Documentation mode: simple or full (default: full)
 --env-file ENV_FILE  Path to .env file (default: .env)
 --skip-jira          Skip PRs without Jira tickets (default: True)
 ```
 
 ### Examples
 
-Generate documentation for the latest 10 PRs:
+Generate full agentic documentation (default):
 ```bash
-python main.py --repo openshift/installer
+python main.py --repo openshift/installer --limit 10
 ```
 
-Generate documentation for 20 PRs:
+Generate simple documentation (ADR + exec-plan only):
 ```bash
-python main.py --repo openshift/installer --limit 20
+python main.py --repo openshift/installer --mode simple --limit 10
 ```
 
-Custom output directory:
+Generate for 20 PRs with custom output:
 ```bash
-python main.py --repo openshift/installer --output docs/generated
+python main.py --repo openshift/installer --limit 20 --output docs/generated
+```
+
+Quick test with 1 PR:
+```bash
+python main.py --repo openshift/installer --limit 1 --mode full
 ```
 
 ## Output Structure
 
-Documentation is organized as follows:
+### Full Mode (Agentic Documentation)
+
+Following the agentic-docs-guide framework:
+
+```
+output/
+└── repo-name/
+    └── agentic-docs/
+        ├── AGENTS.md                    # Repository navigation (entry point)
+        ├── ARCHITECTURE.md              # System map (auto-generated)
+        ├── decisions/
+        │   ├── index.md                 # ADR catalog
+        │   ├── adr-0001-feature.md      # Individual ADRs
+        │   └── adr-template.md
+        ├── exec-plans/
+        │   ├── index.md                 # Execution plan catalog
+        │   ├── active/                  # Work in progress
+        │   ├── completed/               # Historical record
+        │   │   ├── exec-0001-feature.md
+        │   │   └── ...
+        │   └── template.md
+        ├── design-docs/
+        │   ├── index.md                 # Design catalog
+        │   ├── core-beliefs.md          # Operating principles
+        │   ├── component-architecture.md
+        │   └── components/              # Per-component docs
+        ├── product-specs/
+        │   ├── index.md                 # Feature catalog
+        │   └── feature-name.md          # Product specifications
+        ├── domain/
+        │   ├── index.md                 # Domain model map
+        │   ├── glossary.md              # Terminology
+        │   ├── concepts/                # Domain concepts
+        │   └── workflows/               # User/system flows
+        ├── references/                  # External knowledge
+        └── generated/                   # Auto-generated docs
+```
+
+### Simple Mode
+
+Traditional structure (backward compatible):
 
 ```
 output/
@@ -156,6 +231,14 @@ output/
 ```
 
 ### Generated Files
+
+**AGENTS.md** (Full mode only):
+- Repository overview
+- Quick navigation by intent
+- Component boundaries
+- Core concepts
+- Critical code locations
+- Build and test commands
 
 **ADR (Architecture Decision Record):**
 - Context and problem statement
@@ -180,38 +263,59 @@ output/
 
 ## Customization
 
-### Updating Documentation Templates
+### Updating Documentation Prompts
 
-Edit `prompt_templates.py` to customize ADR and execution plan structures:
+All prompts are now in `prompts.yaml` for easy customization:
 
-```python
-ADR_TEMPLATE = """
-# Your custom ADR structure
-...
-"""
-
-EXEC_PLAN_TEMPLATE = """
-# Your custom execution plan structure
-...
-"""
+```yaml
+prompts:
+  adr:
+    name: "Architecture Decision Record"
+    system_instruction: |
+      Your custom system instruction here...
+    
+    user_prompt: |
+      Your custom prompt template here...
+      Use {feature_title}, {pr_number}, etc. for variables
 ```
+
+Available prompt types:
+- `adr`: Architecture Decision Records
+- `exec_plan`: Execution Plans
+- `agents_md`: AGENTS.md repository navigation
+- `design_doc`: Design Documentation
+- `product_spec`: Product Specifications
+- `domain_concept`: Domain Concepts
+- `tech_debt`: Technical Debt Tracker
+
+### Customizing Framework Guidelines
+
+The `prompt_loader.py` automatically injects relevant framework guidelines into prompts. To customize:
+
+1. Edit files in `templates/agentic-docs-guide/`
+2. Modify `framework_files` section in `prompts.yaml`
+3. Adjust `get_framework_guidelines()` in `prompt_loader.py`
 
 ### Adjusting Gemini Parameters
 
 Edit `gemini_client.py` to modify generation parameters:
 
 ```python
-generation_config=genai.types.GenerationConfig(
-    temperature=0.7,      # Adjust creativity (0.0 - 1.0)
-    top_p=0.8,           # Adjust diversity
-    top_k=40,            # Top-k sampling
-    max_output_tokens=2048  # Maximum response length
+config=types.GenerateContentConfig(
+    temperature=0.7,        # Creativity (0.0 - 1.0)
+    top_p=0.8,             # Diversity
+    top_k=40,              # Top-k sampling
+    max_output_tokens=2048 # Maximum response length
 )
 ```
 
 ### Adding Custom Fields
 
 Extend the data models in `models.py` to capture additional information from GitHub or Jira.
+
+### Customizing Output Structure
+
+Modify the `output_structure` section in `prompts.yaml` to change the generated directory structure.
 
 ## Troubleshooting
 
