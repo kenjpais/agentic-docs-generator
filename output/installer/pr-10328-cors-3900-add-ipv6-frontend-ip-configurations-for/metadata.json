@@ -1,0 +1,9 @@
+{
+  "pr_number": 10328,
+  "pr_title": "CORS-3900: Add IPv6 frontend IP configurations for dual-stack",
+  "jira_key": "CORS-3900",
+  "merged_at": "2026-04-10T04:41:51+00:00",
+  "files_modified": 2,
+  "additions": 278,
+  "deletions": 86
+}

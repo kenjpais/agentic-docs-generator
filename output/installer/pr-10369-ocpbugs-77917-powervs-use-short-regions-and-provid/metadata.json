@@ -1,0 +1,9 @@
+{
+  "pr_number": 10369,
+  "pr_title": "OCPBUGS-77917: PowerVS: Use short regions and provide a default resource group in survey",
+  "jira_key": "OCPBUGS-77917",
+  "merged_at": "2026-04-10T10:45:22+00:00",
+  "files_modified": 2,
+  "additions": 11,
+  "deletions": 9
+}

@@ -1,0 +1,9 @@
+{
+  "pr_number": 5385384,
+  "pr_title": "Merge pull request #10328 from rna-afk/azure_dualstack_add_frontend",
+  "jira_key": "CORS-3900",
+  "merged_at": "2026-04-10T04:41:50",
+  "files_modified": 2,
+  "additions": 278,
+  "deletions": 86
+}

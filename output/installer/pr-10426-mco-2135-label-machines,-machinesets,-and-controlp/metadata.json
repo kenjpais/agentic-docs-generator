@@ -1,0 +1,9 @@
+{
+  "pr_number": 10426,
+  "pr_title": "MCO-2135: Label Machines, MachineSets, and ControlPaneMachineSets with OSStream labels",
+  "jira_key": "MCO-2135",
+  "merged_at": "2026-04-09T15:20:02+00:00",
+  "files_modified": 33,
+  "additions": 191,
+  "deletions": 24
+}

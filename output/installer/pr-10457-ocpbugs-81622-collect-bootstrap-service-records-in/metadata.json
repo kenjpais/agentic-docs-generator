@@ -1,0 +1,9 @@
+{
+  "pr_number": 10457,
+  "pr_title": "OCPBUGS-81622: Collect bootstrap service records in agent-gather",
+  "jira_key": "OCPBUGS-81622",
+  "merged_at": "2026-04-07T04:06:24+00:00",
+  "files_modified": 1,
+  "additions": 12,
+  "deletions": 1
+}
