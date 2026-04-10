@@ -1,8 +1,7 @@
 """Context builder for creating structured feature contexts."""
 
-from typing import List
+from typing import List, Optional
 from models import Feature, PullRequest, JiraTicket
-from github_client import GitHubClient
 from jira_client import JiraClient
 import logging
 
@@ -13,8 +12,14 @@ logger = logging.getLogger(__name__)
 class ContextBuilder:
     """Builds structured contexts for features."""
 
-    def __init__(self, github_client: GitHubClient, jira_client: JiraClient):
-        """Initialize context builder with API clients."""
+    def __init__(self, jira_client: JiraClient, github_client=None):
+        """
+        Initialize context builder with API clients.
+
+        Args:
+            jira_client: JiraClient instance (required)
+            github_client: GitHubClient instance (optional, not currently used)
+        """
         self.github_client = github_client
         self.jira_client = jira_client
 

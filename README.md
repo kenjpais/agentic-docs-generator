@@ -69,9 +69,12 @@ The system consists of the following modules:
 ## Prerequisites
 
 - Python 3.8 or higher
-- GitHub Personal Access Token with `repo` scope
-- Jira API Token and account access
-- Google Gemini API Key
+- Google Gemini API Key (required)
+- Jira base URL (for public or authenticated access)
+- **Optional** (only for GitHub API mode):
+  - GitHub Personal Access Token with `repo` scope
+- **Optional** (for private Jira):
+  - Jira API Token and email
 
 ## Installation
 
@@ -134,32 +137,58 @@ GEMINI_API_KEY=your_gemini_api_key
 
 ## Usage
 
-Basic usage (full agentic documentation):
+### Using GitHub API (requires token)
 
 ```bash
 python main.py --repo owner/repo-name
 ```
 
+### Using Local Repository (avoids GitHub API limits) ⭐ RECOMMENDED
+
+```bash
+python main.py --local-repo /path/to/local/repo
+```
+
+**Why use local repository?**
+- Avoids GitHub API rate limits (5000 requests/hour)
+- Works with private repositories without special permissions
+- Faster access to commit data
+- No network latency
+
 ### Command-line Options
 
 ```
---repo REPO          Repository identifier (format: owner/repo) [REQUIRED]
---limit LIMIT        Maximum number of PRs to fetch (default: 10)
---output OUTPUT      Output directory (default: output)
---mode MODE          Documentation mode: simple or full (default: full)
---env-file ENV_FILE  Path to .env file (default: .env)
---skip-jira          Skip PRs without Jira tickets (default: True)
+--repo REPO           Repository identifier (format: owner/repo)
+--local-repo PATH     Path to local git repository (avoids GitHub API limits)
+--limit LIMIT         Maximum number of commits/PRs to fetch (default: 10)
+--output OUTPUT       Output directory (default: output)
+--mode MODE           Documentation mode: simple or full (default: full)
+--env-file ENV_FILE   Path to .env file (default: .env)
+--skip-jira           Skip commits without Jira tickets (default: True)
 ```
+
+**Note**: Either `--repo` or `--local-repo` must be provided, but not both.
 
 ### Examples
 
-Generate full agentic documentation (default):
+**From Local Repository** (recommended):
 ```bash
-python main.py --repo openshift/installer --limit 10
+# Clone the repository first
+git clone https://github.com/openshift/installer.git /tmp/installer
+
+# Generate full documentation from local repo
+python main.py --local-repo /tmp/installer --limit 10
+
+# Generate simple documentation from local repo
+python main.py --local-repo /tmp/installer --mode simple --limit 10
 ```
 
-Generate simple documentation (ADR + exec-plan only):
+**From GitHub API**:
 ```bash
+# Generate full agentic documentation
+python main.py --repo openshift/installer --limit 10
+
+# Generate simple documentation (ADR + exec-plan only)
 python main.py --repo openshift/installer --mode simple --limit 10
 ```
 
