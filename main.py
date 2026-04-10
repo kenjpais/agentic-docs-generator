@@ -10,7 +10,6 @@ import sys
 import logging
 from pathlib import Path
 
-from github_client import GitHubClient
 from local_git_client import LocalGitClient
 from jira_client import JiraClient
 from context_builder import ContextBuilder
@@ -21,7 +20,6 @@ from utils import (
     load_environment_variables,
     validate_environment,
     ensure_output_directory,
-    parse_repo_identifier,
     format_summary
 )
 
@@ -35,15 +33,11 @@ logger = logging.getLogger(__name__)
 def main():
     """Main entry point for the application."""
     parser = argparse.ArgumentParser(
-        description='Generate agentic documentation from GitHub PRs and Jira tickets'
+        description='Generate agentic documentation from local git repository and Jira tickets'
     )
     parser.add_argument(
-        '--repo',
-        help='Repository identifier (format: owner/repo) - required if not using --local-repo'
-    )
-    parser.add_argument(
-        '--local-repo',
-        help='Path to local git repository (avoids GitHub API limits)'
+        'repo_path',
+        help='Path to local git repository'
     )
     parser.add_argument(
         '--limit',
@@ -75,10 +69,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate that either --repo or --local-repo is provided
-    if not args.repo and not args.local_repo:
-        parser.error("Either --repo or --local-repo must be provided")
-
     try:
         # Load environment variables
         logger.info("Starting agentic documentation generator")
@@ -89,52 +79,34 @@ def main():
             logger.error("Environment validation failed. Please check your .env file.")
             sys.exit(1)
 
-        # Determine if using local repo or GitHub API
-        use_local_repo = bool(args.local_repo)
+        # Use local git repository
+        logger.info(f"Using local repository: {args.repo_path}")
+        local_client = LocalGitClient(args.repo_path)
+        repo_info = local_client.get_repo_info()
+        repo_owner = repo_info['owner']
+        repo_name = repo_info['name']
+        logger.info(f"Repository: {repo_owner}/{repo_name}")
 
-        if use_local_repo:
-            # Use local git repository
-            logger.info(f"Using local repository: {args.local_repo}")
-            local_client = LocalGitClient(args.local_repo)
-            repo_info = local_client.get_repo_info()
-            repo_owner = repo_info['owner']
-            repo_name = repo_info['name']
-            logger.info(f"Repository: {repo_owner}/{repo_name}")
-
-            # Fetch commits from local repo
-            logger.info(f"Fetching up to {args.limit} recent commits from local repository")
-            prs = local_client.fetch_recent_commits(limit=args.limit)
-            logger.info(f"Found {len(prs)} commits")
-
-        else:
-            # Use GitHub API
-            repo_owner, repo_name = parse_repo_identifier(args.repo)
-            logger.info(f"Target repository: {repo_owner}/{repo_name}")
-
-            # Initialize GitHub client
-            logger.info("Initializing GitHub API client")
-            github_client = GitHubClient()
-
-            # Fetch merged PRs
-            logger.info(f"Fetching up to {args.limit} merged PRs from GitHub")
-            prs = github_client.fetch_merged_prs(repo_owner, repo_name, limit=args.limit)
-            logger.info(f"Found {len(prs)} merged PRs")
+        # Fetch commits from local repo
+        logger.info(f"Fetching up to {args.limit} recent commits from local repository")
+        commits = local_client.fetch_recent_commits(limit=args.limit)
+        logger.info(f"Found {len(commits)} commits")
 
         # Ensure output directory exists
         ensure_output_directory(args.output)
 
-        # Initialize remaining clients
+        # Initialize clients
         jira_client = JiraClient()
         gemini_client = GeminiClient()
 
-        if not prs:
-            logger.warning("No merged PRs found")
+        if not commits:
+            logger.warning("No commits found")
             sys.exit(0)
 
-        # Build features by linking PRs to Jira
-        logger.info("Linking commits/PRs to Jira tickets")
+        # Build features by linking commits to Jira
+        logger.info("Linking commits to Jira tickets")
         context_builder = ContextBuilder(jira_client)
-        features = context_builder.link_prs_to_jira(prs)
+        features = context_builder.link_prs_to_jira(commits)
         logger.info(f"Created {len(features)} features with Jira links")
 
         if not features:
@@ -177,7 +149,8 @@ def main():
         print("Documentation Generation Complete")
         print("=" * 70)
         print(f"\nMode: {args.mode.upper()}")
-        print(f"Total PRs fetched: {len(prs)}")
+        print(f"Repository: {args.repo_path}")
+        print(f"Total commits processed: {len(commits)}")
         print(f"Features with Jira links: {len(features)}")
         print(f"Documentation generated: {len(generated_docs)}")
         print(f"\nOutput directory: {Path(args.output).absolute()}")

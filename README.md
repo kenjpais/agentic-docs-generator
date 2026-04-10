@@ -1,17 +1,25 @@
 # Agentic Documentation Generator
 
-An automated tool that generates comprehensive agentic documentation for software repositories following the [agentic-docs-guide framework](https://github.com/Prashanth684/agentic-docs-guide). Generates complete documentation structures from GitHub Pull Requests and Jira tickets using Google's Gemini LLM.
+An automated tool that generates comprehensive agentic documentation for software repositories following the [agentic-docs-guide framework](https://github.com/Prashanth684/agentic-docs-guide). Analyzes local git repositories to extract commit history, links to Jira tickets, and generates complete documentation structures using Google's Gemini LLM.
 
 ## Overview
 
 This tool helps engineering teams automatically document their work by:
 
-1. Fetching merged Pull Requests from GitHub repositories
-2. Linking PRs to their associated Jira tickets
-3. Building comprehensive context from code changes and Jira discussions
-4. Generating structured agentic documentation using Gemini AI
-5. Following the complete agentic-docs-guide framework structure
-6. Creating repository navigation and living documentation
+1. Analyzing commits from local git repositories (no GitHub API required)
+2. Extracting Jira ticket IDs from commit messages
+3. Fetching Jira ticket details and acceptance criteria
+4. Building comprehensive context from code changes and Jira discussions
+5. Generating structured agentic documentation using Gemini AI
+6. Following the complete agentic-docs-guide framework structure
+7. Creating repository navigation and living documentation
+
+**Why local repositories?**
+- ✅ No GitHub API rate limits (5000 requests/hour)
+- ✅ Works with private repositories without special permissions
+- ✅ Faster processing - direct access to git data
+- ✅ Can process unlimited commits
+- ✅ No network latency or API quota concerns
 
 ## Features
 
@@ -40,9 +48,9 @@ The system consists of the following modules:
 
 ```
 ├── main.py                        # CLI entry point with mode selection
-├── github_client.py               # GitHub API integration
+├── local_git_client.py            # Local git repository integration
 ├── jira_client.py                 # Jira API integration (with public access)
-├── context_builder.py             # Links PRs to Jira and builds context
+├── context_builder.py             # Links commits to Jira and builds context
 ├── gemini_client.py               # Gemini LLM integration (google-genai)
 ├── prompt_loader.py               # Load prompts from YAML configuration
 ├── prompts.yaml                   # Centralized prompt configuration
@@ -57,7 +65,7 @@ The system consists of the following modules:
 
 **Simple Mode** (`--mode simple`):
 - Generates ADRs and execution plans only
-- Organized by PR in traditional structure
+- Organized by commit in traditional structure
 - Quick generation for basic documentation needs
 
 **Full Mode** (`--mode full`, default):
@@ -66,13 +74,21 @@ The system consists of the following modules:
 - Creates AGENTS.md, design docs, product specs, domain models
 - Organized in standardized agentic/ directory structure
 
+### How It Works
+
+1. **Local Git Analysis**: Uses `git log`, `git show`, and `git diff` to extract commit data
+2. **Jira ID Extraction**: Parses commit messages for Jira ticket IDs (e.g., OCPBUGS-123, CORS-456)
+3. **Jira Integration**: Fetches ticket details, acceptance criteria, and discussions
+4. **Context Building**: Combines code changes and Jira information
+5. **AI Generation**: Uses Gemini to generate comprehensive documentation
+6. **Framework Compliance**: Follows agentic-docs-guide structure exactly
+
 ## Prerequisites
 
 - Python 3.8 or higher
+- Git installed (for reading local repositories)
 - Google Gemini API Key (required)
 - Jira base URL (for public or authenticated access)
-- **Optional** (only for GitHub API mode):
-  - GitHub Personal Access Token with `repo` scope
 - **Optional** (for private Jira):
   - Jira API Token and email
 
@@ -106,90 +122,83 @@ cp .env.example .env
 Create a `.env` file with the following variables:
 
 ```bash
-# GitHub Configuration
-GITHUB_TOKEN=your_github_personal_access_token
-
 # Jira Configuration
-JIRA_BASE_URL=https://yourcompany.atlassian.net
-JIRA_API_TOKEN=your_jira_api_token
-JIRA_EMAIL=your_email@example.com
+JIRA_BASE_URL=https://issues.redhat.com
+JIRA_API_TOKEN=your_jira_api_token  # Optional for public Jira
+JIRA_EMAIL=your_email@example.com   # Optional for public Jira
 
-# Gemini Configuration
+# Gemini Configuration (Required)
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ### Getting API Credentials
 
-**GitHub Token:**
-1. Go to GitHub Settings → Developer settings → Personal access tokens
-2. Generate new token with `repo` scope
-3. Copy the token to your `.env` file
-
-**Jira API Token:**
-1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
-2. Create API token
-3. Copy token and your email to `.env` file
-
-**Gemini API Key:**
+**Gemini API Key** (Required):
 1. Go to https://makersuite.google.com/app/apikey
 2. Create API key
-3. Copy to `.env` file
+3. Copy to `.env` file as `GEMINI_API_KEY`
+
+**Jira Configuration** (Required for Jira base URL, optional for authentication):
+- **JIRA_BASE_URL**: Your Jira instance URL (e.g., `https://issues.redhat.com`)
+- **JIRA_API_TOKEN**: Only required for private Jira instances
+  1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
+  2. Create API token
+  3. Copy token to `.env` file
+- **JIRA_EMAIL**: Only required for private Jira instances (your Jira email)
+
+**Note**: For public Jira instances like Red Hat's, only `JIRA_BASE_URL` is required.
 
 ## Usage
 
-### Using GitHub API (requires token)
+### Basic Usage
 
 ```bash
-python main.py --repo owner/repo-name
+python main.py /path/to/local/repo
 ```
-
-### Using Local Repository (avoids GitHub API limits) ⭐ RECOMMENDED
-
-```bash
-python main.py --local-repo /path/to/local/repo
-```
-
-**Why use local repository?**
-- Avoids GitHub API rate limits (5000 requests/hour)
-- Works with private repositories without special permissions
-- Faster access to commit data
-- No network latency
 
 ### Command-line Options
 
 ```
---repo REPO           Repository identifier (format: owner/repo)
---local-repo PATH     Path to local git repository (avoids GitHub API limits)
---limit LIMIT         Maximum number of commits/PRs to fetch (default: 10)
+repo_path             Path to local git repository (required positional argument)
+--limit LIMIT         Maximum number of commits to fetch (default: 10)
 --output OUTPUT       Output directory (default: output)
 --mode MODE           Documentation mode: simple or full (default: full)
 --env-file ENV_FILE   Path to .env file (default: .env)
 --skip-jira           Skip commits without Jira tickets (default: True)
 ```
 
-**Note**: Either `--repo` or `--local-repo` must be provided, but not both.
-
 ### Examples
 
-**From Local Repository** (recommended):
+**Step 1: Clone the repository**
 ```bash
-# Clone the repository first
 git clone https://github.com/openshift/installer.git /tmp/installer
-
-# Generate full documentation from local repo
-python main.py --local-repo /tmp/installer --limit 10
-
-# Generate simple documentation from local repo
-python main.py --local-repo /tmp/installer --mode simple --limit 10
 ```
 
-**From GitHub API**:
-```bash
-# Generate full agentic documentation
-python main.py --repo openshift/installer --limit 10
+**Step 2: Generate documentation**
 
-# Generate simple documentation (ADR + exec-plan only)
-python main.py --repo openshift/installer --mode simple --limit 10
+Full agentic documentation (default):
+```bash
+python main.py /tmp/installer --limit 10
+```
+
+Simple documentation (ADR + exec-plan only):
+```bash
+python main.py /tmp/installer --mode simple --limit 10
+```
+
+Process more commits:
+```bash
+python main.py /tmp/installer --limit 50
+```
+
+Custom output directory:
+```bash
+python main.py /tmp/installer --output docs/generated
+```
+
+Quick test with 1 commit:
+```bash
+python main.py /tmp/installer --limit 1
 ```
 
 Generate for 20 PRs with custom output:
