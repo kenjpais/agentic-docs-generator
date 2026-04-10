@@ -396,38 +396,3 @@ Following the modular design from `PLAN.md`:
 # Add tests in tests/ directory
 pytest tests/
 ```
-
-### Contributing
-
-1. Follow the existing code structure
-2. Add logging for debugging
-3. Handle errors gracefully
-4. Update documentation for new features
-
-## Future Enhancements
-
-- [ ] Multi-repository batch processing
-- [ ] Web dashboard for viewing documentation
-- [ ] Vector database integration for historical context
-- [ ] Continuous documentation pipeline (CI/CD integration)
-- [ ] Support for other LLM providers (Claude, GPT-4)
-- [ ] Custom field mapping for Jira
-- [ ] Documentation versioning
-- [ ] Automated PR commenting with generated docs
-
-## License
-
-[Your License Here]
-
-## Support
-
-For issues and questions:
-- Create an issue in the repository
-- Check existing documentation
-- Review logs in the console output
-
-## Acknowledgments
-
-- Built for Red Hat OpenShift documentation automation
-- Follows agentic-docs-guide structure: https://github.com/Prashanth684/agentic-docs-guide/
-- Powered by Google Gemini AI
