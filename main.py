@@ -6,6 +6,7 @@ Generates ADRs and execution plans from GitHub PRs and Jira tickets.
 """
 
 import argparse
+import os
 import sys
 import logging
 from pathlib import Path
@@ -14,8 +15,14 @@ from local_git_client import LocalGitClient
 from jira_client import JiraClient
 from context_builder import ContextBuilder
 from gemini_client import GeminiClient
+from llm_client import create_llm_client
 from doc_generator import DocumentationGenerator
 from agentic_doc_generator import AgenticDocumentationGenerator
+from repo_profiler import RepoProfiler
+from code_analyzer import CodeAnalyzer
+from history_lookup import HistoryLookup
+from enhancement_fetcher import EnhancementFetcher
+from adr_generator import ADRGenerator
 from utils import (
     load_environment_variables,
     validate_environment,
@@ -62,9 +69,18 @@ def main():
     )
     parser.add_argument(
         '--mode',
-        choices=['simple', 'full'],
+        choices=['simple', 'full', 'bootstrap'],
         default='full',
-        help='Documentation generation mode: simple (ADR+exec-plan only) or full (complete agentic structure) (default: full)'
+        help='Documentation generation mode: simple (ADR+exec-plan per PR), '
+             'full (complete agentic structure per PR), or '
+             'bootstrap (code-first ADRs for existing architecture) (default: full)'
+    )
+    parser.add_argument(
+        '--llm',
+        choices=['gemini', 'claude', 'auto'],
+        default='auto',
+        help='LLM provider: gemini (direct API), claude (Vertex AI), '
+             'or auto (detect from env vars) (default: auto)'
     )
 
     args = parser.parse_args()
@@ -75,108 +91,160 @@ def main():
         load_environment_variables(args.env_file)
 
         # Validate environment
-        if not validate_environment():
+        if not validate_environment(mode=args.mode):
             logger.error("Environment validation failed. Please check your .env file.")
             sys.exit(1)
-
-        # Use local git repository
-        logger.info(f"Using local repository: {args.repo_path}")
-        local_client = LocalGitClient(args.repo_path)
-        repo_info = local_client.get_repo_info()
-        repo_owner = repo_info['owner']
-        repo_name = repo_info['name']
-        logger.info(f"Repository: {repo_owner}/{repo_name}")
-
-        # Fetch commits from local repo
-        logger.info(f"Fetching up to {args.limit} recent commits from local repository")
-        commits = local_client.fetch_recent_commits(limit=args.limit)
-        logger.info(f"Found {len(commits)} commits")
 
         # Ensure output directory exists
         ensure_output_directory(args.output)
 
-        # Initialize clients
-        jira_client = JiraClient()
-        gemini_client = GeminiClient()
+        # ---------------------------------------------------------------
+        # Bootstrap mode: code-first ADR generation
+        # ---------------------------------------------------------------
+        if args.mode == 'bootstrap':
+            logger.info(f"Bootstrap mode: analyzing codebase at {args.repo_path}")
 
-        if not commits:
-            logger.warning("No commits found")
-            sys.exit(0)
+            llm = create_llm_client(args.llm)
 
-        # Build features by linking commits to Jira
-        logger.info("Linking commits to Jira tickets")
-        context_builder = ContextBuilder(jira_client)
-        features = context_builder.link_prs_to_jira(commits)
-        logger.info(f"Created {len(features)} features with Jira links")
+            profiler = RepoProfiler(args.repo_path)
+            profile = profiler.profile()
+            logger.info(f"Repo profile: {profile.repo_type} ({profile.openshift_category}), "
+                        f"lang={profile.primary_language}")
 
-        if not features:
-            logger.warning("No features with valid Jira links found")
-            sys.exit(0)
+            logger.info("Pass 1: LLM-driven decision discovery...")
+            analyzer = CodeAnalyzer(profile, llm_client=llm)
+            decision_areas = analyzer.analyze()
+            logger.info(f"Found {len(decision_areas)} decision areas")
 
-        # Generate documentation based on mode
-        logger.info(f"Generating documentation (mode: {args.mode})")
+            if not decision_areas:
+                logger.warning("No architectural decision areas found")
+                sys.exit(0)
 
-        if args.mode == 'full':
-            # Use comprehensive agentic documentation generator
-            agentic_gen = AgenticDocumentationGenerator(gemini_client, args.output)
-            all_paths = agentic_gen.generate_full_documentation(features, repo_name, repo_owner)
+            enhancement_fetcher = EnhancementFetcher()
+            if enhancement_fetcher.is_available():
+                logger.info("Enhancement fetcher available (gh CLI found)")
+            else:
+                logger.info("Enhancement fetcher not available (gh CLI not found)")
+                enhancement_fetcher = None
 
-            generated_docs = []
-            for feature in features:
-                generated_docs.append({
-                    'feature': feature,
-                    'files': all_paths
-                })
+            jira_client = None
+            jira_url = os.getenv("JIRA_BASE_URL", "https://redhat.atlassian.net")
+            try:
+                jira_client = JiraClient(base_url=jira_url)
+                logger.info(f"Jira client available ({jira_url})")
+            except Exception as e:
+                logger.warning(f"Jira client init failed (optional, continuing without): {e}")
+
+            history = HistoryLookup(
+                repo_path=args.repo_path,
+                jira_client=jira_client,
+                enhancement_fetcher=enhancement_fetcher,
+                repo_owner=profile.owner,
+                repo_name=profile.name,
+            )
+            logger.info("Enriching decision areas with history...")
+            history.enrich_all(decision_areas)
+
+            logger.info("Pass 2: Generating ADRs with full code context...")
+            generator = ADRGenerator(llm, args.output)
+            generated_paths = generator.generate_adrs(decision_areas, profile)
+
+            print("\n" + "=" * 70)
+            print("Bootstrap ADR Generation Complete")
+            print("=" * 70)
+            print(f"\nRepository: {profile.owner}/{profile.name}")
+            print(f"Type: {profile.repo_type} ({profile.openshift_category})")
+            print(f"Language: {profile.primary_language}")
+            print(f"Decision areas found: {len(decision_areas)}")
+            print(f"ADRs generated: {len(generated_paths)}")
+            print(f"\nOutput: {Path(args.output).absolute() / profile.name / 'agentic' / 'decisions'}")
+            print("\nGenerated ADRs:")
+            for p in generated_paths:
+                print(f"  - {Path(p).name}")
+            print("\n" + "=" * 70)
+
+        # ---------------------------------------------------------------
+        # Simple / Full modes: PR-based generation (existing behavior)
+        # ---------------------------------------------------------------
         else:
-            # Use simple generator (ADR + exec-plan only)
-            doc_generator = DocumentationGenerator(gemini_client, args.output)
+            logger.info(f"Using local repository: {args.repo_path}")
+            local_client = LocalGitClient(args.repo_path)
+            repo_info = local_client.get_repo_info()
+            repo_owner = repo_info['owner']
+            repo_name = repo_info['name']
+            logger.info(f"Repository: {repo_owner}/{repo_name}")
 
-            generated_docs = []
-            for i, feature in enumerate(features, 1):
-                logger.info(f"Processing feature {i}/{len(features)}")
-                try:
-                    file_paths = doc_generator.generate_and_save(feature, repo_name)
-                    generated_docs.append({
-                        'feature': feature,
-                        'files': file_paths
-                    })
-                except Exception as e:
-                    logger.error(f"Error generating docs for PR #{feature.pr.number}: {str(e)}")
-                    continue
+            logger.info(f"Fetching up to {args.limit} recent commits from local repository")
+            commits = local_client.fetch_recent_commits(limit=args.limit)
+            logger.info(f"Found {len(commits)} commits")
 
-        # Print summary
-        print("\n" + "=" * 70)
-        print("Documentation Generation Complete")
-        print("=" * 70)
-        print(f"\nMode: {args.mode.upper()}")
-        print(f"Repository: {args.repo_path}")
-        print(f"Total commits processed: {len(commits)}")
-        print(f"Features with Jira links: {len(features)}")
-        print(f"Documentation generated: {len(generated_docs)}")
-        print(f"\nOutput directory: {Path(args.output).absolute()}")
+            jira_client = JiraClient()
+            gemini_client = GeminiClient()
 
-        if args.mode == 'full':
-            print("\nGenerated agentic documentation structure:")
-            print(f"  - {repo_name}/agentic-docs/")
-            print(f"    ├── AGENTS.md (repository navigation)")
-            print(f"    ├── decisions/ (ADRs)")
-            print(f"    ├── exec-plans/ (execution plans)")
-            print(f"    ├── design-docs/ (design documentation)")
-            print(f"    ├── product-specs/ (feature specifications)")
-            print(f"    ├── domain/ (concepts and workflows)")
-            print(f"    └── references/ (external knowledge)")
+            if not commits:
+                logger.warning("No commits found")
+                sys.exit(0)
 
-        if generated_docs and args.mode == 'simple':
-            print("\nGenerated documentation:")
-            for doc in generated_docs:
-                feature = doc['feature']
-                files = doc['files']
-                print(f"\n  PR #{feature.pr.number}: {feature.pr.title}")
-                print(f"    Jira: {feature.jira.key if feature.jira else 'N/A'}")
-                if 'directory' in files:
-                    print(f"    Location: {files['directory']}")
+            logger.info("Linking commits to Jira tickets")
+            context_builder = ContextBuilder(jira_client)
+            features = context_builder.link_prs_to_jira(commits)
+            logger.info(f"Created {len(features)} features with Jira links")
 
-        print("\n" + "=" * 70)
+            if not features:
+                logger.warning("No features with valid Jira links found")
+                sys.exit(0)
+
+            logger.info(f"Generating documentation (mode: {args.mode})")
+
+            if args.mode == 'full':
+                agentic_gen = AgenticDocumentationGenerator(gemini_client, args.output)
+                all_paths = agentic_gen.generate_full_documentation(features, repo_name, repo_owner)
+                generated_docs = [{'feature': f, 'files': all_paths} for f in features]
+            else:
+                doc_generator = DocumentationGenerator(gemini_client, args.output)
+                generated_docs = []
+                for i, feature in enumerate(features, 1):
+                    logger.info(f"Processing feature {i}/{len(features)}")
+                    try:
+                        file_paths = doc_generator.generate_and_save(feature, repo_name)
+                        generated_docs.append({'feature': feature, 'files': file_paths})
+                    except Exception as e:
+                        logger.error(f"Error generating docs for PR #{feature.pr.number}: {str(e)}")
+                        continue
+
+            print("\n" + "=" * 70)
+            print("Documentation Generation Complete")
+            print("=" * 70)
+            print(f"\nMode: {args.mode.upper()}")
+            print(f"Repository: {args.repo_path}")
+            print(f"Total commits processed: {len(commits)}")
+            print(f"Features with Jira links: {len(features)}")
+            print(f"Documentation generated: {len(generated_docs)}")
+            print(f"\nOutput directory: {Path(args.output).absolute()}")
+
+            if args.mode == 'full':
+                print("\nGenerated agentic documentation structure:")
+                print(f"  - {repo_name}/agentic-docs/")
+                print(f"    ├── AGENTS.md (repository navigation)")
+                print(f"    ├── decisions/ (ADRs)")
+                print(f"    ├── exec-plans/ (execution plans)")
+                print(f"    ├── design-docs/ (design documentation)")
+                print(f"    ├── product-specs/ (feature specifications)")
+                print(f"    ├── domain/ (concepts and workflows)")
+                print(f"    └── references/ (external knowledge)")
+
+            if generated_docs and args.mode == 'simple':
+                print("\nGenerated documentation:")
+                for doc in generated_docs:
+                    feature = doc['feature']
+                    files = doc['files']
+                    print(f"\n  PR #{feature.pr.number}: {feature.pr.title}")
+                    print(f"    Jira: {feature.jira.key if feature.jira else 'N/A'}")
+                    if 'directory' in files:
+                        print(f"    Location: {files['directory']}")
+
+            print("\n" + "=" * 70)
+
         logger.info("Documentation generation complete")
 
     except KeyboardInterrupt:

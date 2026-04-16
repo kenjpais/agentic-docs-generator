@@ -30,35 +30,53 @@ def load_environment_variables(env_file: str = ".env") -> bool:
         return False
 
 
-def validate_environment() -> bool:
+def validate_environment(mode: str = 'full') -> bool:
     """
-    Validate that all required environment variables are set.
+    Validate that required environment variables are set.
+
+    Requirements vary by mode:
+      - bootstrap: at least one LLM credential (GEMINI_API_KEY or ANTHROPIC_VERTEX_PROJECT_ID)
+      - simple/full: GEMINI_API_KEY and JIRA_BASE_URL required; GITHUB_TOKEN optional
 
     Returns:
         True if all required variables are set, False otherwise
     """
-    required_vars = [
-        'GITHUB_TOKEN',
-        'JIRA_BASE_URL',
-        'GEMINI_API_KEY'
-    ]
+    if mode == 'bootstrap':
+        has_gemini = bool(os.getenv('GEMINI_API_KEY'))
+        has_claude = bool(os.getenv('ANTHROPIC_VERTEX_PROJECT_ID'))
 
-    optional_vars = ['JIRA_API_TOKEN', 'JIRA_EMAIL']
+        if not has_gemini and not has_claude:
+            logger.error(
+                "Bootstrap mode requires at least one LLM: "
+                "set GEMINI_API_KEY or ANTHROPIC_VERTEX_PROJECT_ID"
+            )
+            return False
 
-    missing_vars = []
-    for var in required_vars:
-        if not os.getenv(var):
-            missing_vars.append(var)
+        if has_claude:
+            logger.info(f"Claude Vertex AI configured: project={os.getenv('ANTHROPIC_VERTEX_PROJECT_ID')}")
+        if has_gemini:
+            logger.info("Gemini API configured")
 
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-        return False
+        optional_enrichment = ['GITHUB_TOKEN', 'JIRA_BASE_URL']
+    else:
+        required_vars = ['JIRA_BASE_URL', 'GEMINI_API_KEY']
+        optional_enrichment = ['GITHUB_TOKEN']
 
-    # Log info about optional Jira auth
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        if missing_vars:
+            logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+            return False
+
+    for var in optional_enrichment:
+        if os.getenv(var):
+            logger.info(f"Optional enrichment enabled: {var}")
+        else:
+            logger.info(f"Optional enrichment not configured: {var}")
+
     if not os.getenv('JIRA_API_TOKEN') or not os.getenv('JIRA_EMAIL'):
         logger.info("Jira authentication not configured - will access public Jira tickets only")
 
-    logger.info("All required environment variables are set")
+    logger.info("Environment validation passed")
     return True
 
 
