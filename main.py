@@ -11,13 +11,6 @@ import sys
 import logging
 from pathlib import Path
 
-from local_git_client import LocalGitClient
-from jira_client import JiraClient
-from context_builder import ContextBuilder
-from gemini_client import GeminiClient
-from llm_client import create_llm_client
-from doc_generator import DocumentationGenerator
-from agentic_doc_generator import AgenticDocumentationGenerator
 from utils import (
     load_environment_variables,
     validate_environment,
@@ -35,17 +28,32 @@ logger = logging.getLogger(__name__)
 def main():
     """Main entry point for the application."""
     parser = argparse.ArgumentParser(
-        description='Generate agentic documentation from local git repository and Jira tickets'
+        description='Generate agentic documentation from GitHub PRs, local git, and Jira tickets',
+        epilog=(
+            "Examples:\n"
+            "  # GitHub API ingestion (multi-repo, date range)\n"
+            "  %(prog)s --mode github-ingest openshift/installer --limit 100\n"
+            "  %(prog)s --mode github-ingest openshift/installer openshift/machine-config-operator "
+            "--since 2025-10-15 --until 2026-04-15\n\n"
+            "  # Local git modes (existing)\n"
+            "  %(prog)s /tmp/installer --mode full --limit 10\n"
+            "  %(prog)s /tmp/installer --mode bootstrap\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         'repo_path',
-        help='Path to local git repository'
+        nargs='+',
+        help='Path to local git repo (simple/full/bootstrap) or '
+             'owner/name / GitHub URL (github-ingest mode). '
+             'Multiple repos supported in github-ingest mode.',
     )
     parser.add_argument(
         '--limit',
         type=int,
-        default=10,
-        help='Maximum number of PRs to fetch (default: 10)'
+        default=None,
+        help='Maximum number of PRs to fetch. '
+             'Default: 10 for local git modes, all PRs in date range for github-ingest.',
     )
     parser.add_argument(
         '--output',
@@ -64,11 +72,14 @@ def main():
     )
     parser.add_argument(
         '--mode',
-        choices=['simple', 'full', 'bootstrap'],
+        choices=['simple', 'full', 'bootstrap', 'github-ingest'],
         default='full',
-        help='Documentation generation mode: simple (ADR+exec-plan per PR), '
-             'full (complete agentic structure per PR), or '
-             'bootstrap (code-first ADRs for existing architecture) (default: full)'
+        help='Documentation generation mode: '
+             'simple (ADR+exec-plan per PR), '
+             'full (complete agentic structure per PR), '
+             'bootstrap (code-first ADRs for existing architecture), '
+             'github-ingest (fetch repo + PR + issue data via GitHub API) '
+             '(default: full)'
     )
     parser.add_argument(
         '--llm',
@@ -78,6 +89,35 @@ def main():
              'or auto (detect from env vars) (default: auto)'
     )
 
+    # GitHub ingestion specific options
+    parser.add_argument(
+        '--since',
+        type=str,
+        default=None,
+        help='Start date for PR ingestion (ISO 8601, e.g. 2025-10-15). '
+             'Default: 6 months ago.',
+    )
+    parser.add_argument(
+        '--until',
+        type=str,
+        default=None,
+        help='End date for PR ingestion (ISO 8601, e.g. 2026-04-15). '
+             'Default: today.',
+    )
+    parser.add_argument(
+        '--pr-states',
+        nargs='+',
+        default=None,
+        choices=['MERGED', 'CLOSED', 'OPEN'],
+        help='PR states to fetch in github-ingest mode (default: MERGED CLOSED)',
+    )
+    parser.add_argument(
+        '--token',
+        type=str,
+        default=None,
+        help='GitHub API token for github-ingest mode (or set GITHUB_TOKEN env var)',
+    )
+
     args = parser.parse_args()
 
     try:
@@ -85,13 +125,52 @@ def main():
         logger.info("Starting agentic documentation generator")
         load_environment_variables(args.env_file)
 
-        # Validate environment
+        # ---------------------------------------------------------------
+        # GitHub Ingest mode: API-based multi-repo ingestion
+        # ---------------------------------------------------------------
+        if args.mode == 'github-ingest':
+            from github_client import ingest_repos
+
+            ingest_limit = args.limit if args.limit is not None else 999999
+
+            logger.info(f"GitHub Ingest mode: {len(args.repo_path)} repo(s)")
+            output_dir = os.path.join(args.output, 'github-ingestion')
+
+            files = ingest_repos(
+                repo_specs=args.repo_path,
+                token=args.token,
+                limit=ingest_limit,
+                since=args.since,
+                until=args.until,
+                states=args.pr_states,
+                output_dir=output_dir,
+            )
+
+            print("\n" + "=" * 70)
+            print("GitHub Ingestion Complete")
+            print("=" * 70)
+            print(f"\nRepositories: {', '.join(args.repo_path)}")
+            print(f"Date range: {args.since or '(6 months ago)'} to {args.until or '(today)'}")
+            limit_str = str(args.limit) if args.limit is not None else "all in date range"
+            print(f"PR limit per repo: {limit_str}")
+            print(f"\n{len(files)} file(s) written:")
+            for f in files:
+                size_kb = f.stat().st_size / 1024
+                print(f"  {f} ({size_kb:.1f} KB)")
+            print("\n" + "=" * 70)
+            return
+
+        # ---------------------------------------------------------------
+        # Existing modes below require environment validation
+        # ---------------------------------------------------------------
         if not validate_environment(mode=args.mode):
             logger.error("Environment validation failed. Please check your .env file.")
             sys.exit(1)
 
-        # Ensure output directory exists
         ensure_output_directory(args.output)
+
+        # For non-ingest modes, repo_path is a single local path
+        repo_path_str = args.repo_path[0]
 
         # ---------------------------------------------------------------
         # Bootstrap mode: code-first ADR generation
@@ -99,11 +178,13 @@ def main():
         if args.mode == 'bootstrap':
             from adr_bootstrap import generate_adrs
 
-            logger.info(f"Bootstrap mode: analyzing codebase at {args.repo_path}")
+            from llm_client import create_llm_client
+
+            logger.info(f"Bootstrap mode: analyzing codebase at {repo_path_str}")
             llm = create_llm_client(args.llm)
 
             generated_paths = generate_adrs(
-                repo_path=args.repo_path,
+                repo_path=repo_path_str,
                 output_dir=args.output,
                 llm_client=llm,
             )
@@ -111,7 +192,7 @@ def main():
             print("\n" + "=" * 70)
             print("Bootstrap ADR Generation Complete")
             print("=" * 70)
-            print(f"\nRepository: {args.repo_path}")
+            print(f"\nRepository: {repo_path_str}")
             print(f"ADRs generated: {len(generated_paths)}")
             print(f"\nOutput: {Path(args.output).absolute()}")
             print("\nGenerated ADRs:")
@@ -123,15 +204,23 @@ def main():
         # Simple / Full modes: PR-based generation (existing behavior)
         # ---------------------------------------------------------------
         else:
-            logger.info(f"Using local repository: {args.repo_path}")
-            local_client = LocalGitClient(args.repo_path)
+            from local_git_client import LocalGitClient
+            from jira_client import JiraClient
+            from context_builder import ContextBuilder
+            from gemini_client import GeminiClient
+            from doc_generator import DocumentationGenerator
+            from agentic_doc_generator import AgenticDocumentationGenerator
+
+            logger.info(f"Using local repository: {repo_path_str}")
+            local_client = LocalGitClient(repo_path_str)
             repo_info = local_client.get_repo_info()
             repo_owner = repo_info['owner']
             repo_name = repo_info['name']
             logger.info(f"Repository: {repo_owner}/{repo_name}")
 
-            logger.info(f"Fetching up to {args.limit} recent commits from local repository")
-            commits = local_client.fetch_recent_commits(limit=args.limit)
+            local_limit = args.limit if args.limit is not None else 10
+            logger.info(f"Fetching up to {local_limit} recent commits from local repository")
+            commits = local_client.fetch_recent_commits(limit=local_limit)
             logger.info(f"Found {len(commits)} commits")
 
             jira_client = JiraClient()
@@ -172,7 +261,7 @@ def main():
             print("Documentation Generation Complete")
             print("=" * 70)
             print(f"\nMode: {args.mode.upper()}")
-            print(f"Repository: {args.repo_path}")
+            print(f"Repository: {repo_path_str}")
             print(f"Total commits processed: {len(commits)}")
             print(f"Features with Jira links: {len(features)}")
             print(f"Documentation generated: {len(generated_docs)}")
