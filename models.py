@@ -1,4 +1,4 @@
-"""Data models for agentic documentation generator."""
+"""Data models for agentic documentation generator (simple/full PR-based modes)."""
 
 from dataclasses import dataclass
 from typing import List, Optional
@@ -20,7 +20,7 @@ class PullRequest:
     title: str
     description: str
     merged_at: Optional[datetime]
-    files_changed: List[dict]  # List of {filename, additions, deletions, patch}
+    files_changed: List[dict]
     jira_id: Optional[str] = None
 
 
