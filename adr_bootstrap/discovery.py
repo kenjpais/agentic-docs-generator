@@ -5,10 +5,11 @@ import re
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from models import DecisionArea, RepoProfile
+import yaml
+
+from .models import DecisionArea, RepoProfile
 import logging
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MAX_FILE_CHARS = 8000
@@ -18,11 +19,11 @@ MAX_TOTAL_CHARS = 120000
 class DiscoveryAgent:
     """Uses an LLM to identify architectural decisions from full source code."""
 
-    def __init__(self, llm_client, prompts_config: Optional[Dict] = None):
+    def __init__(self, llm_client):
         self.llm = llm_client
-        self.prompts_config = prompts_config or {}
 
-    def discover(self, repo_path: str, profile: RepoProfile) -> List[DecisionArea]:
+    def discover(self, repo_path: str, profile: RepoProfile,
+                 max_decisions: int = 8) -> List[DecisionArea]:
         repo = Path(repo_path)
         logger.info(f"Pass 1: Collecting key files from {profile.name}")
 
@@ -32,9 +33,9 @@ class DiscoveryAgent:
             return []
 
         total_chars = sum(len(c) for c in files_content.values())
-        logger.info(f"Collected {len(files_content)} files ({total_chars} chars) for discovery")
+        logger.info(f"Collected {len(files_content)} files ({total_chars} chars)")
 
-        prompt = self._build_discovery_prompt(files_content, profile)
+        prompt = self._build_discovery_prompt(files_content, profile, max_decisions)
         logger.info("Sending discovery prompt to LLM...")
 
         try:
@@ -44,11 +45,12 @@ class DiscoveryAgent:
             return []
 
         areas = self._parse_response(response, repo)
+        self._attach_owners(areas, repo)
         logger.info(f"Pass 1 discovered {len(areas)} decision areas")
         return areas
 
     # ------------------------------------------------------------------
-    # File collection — language/repo-type aware
+    # File collection
     # ------------------------------------------------------------------
 
     def _collect_key_files(self, repo: Path, profile: RepoProfile) -> Dict[str, str]:
@@ -79,16 +81,14 @@ class DiscoveryAgent:
         docs = repo / "docs"
         if docs.is_dir():
             for md in sorted(docs.rglob("*.md"))[:5]:
-                rel = str(md.relative_to(repo))
-                _add(rel, self._read(md, max_lines=500))
+                _add(str(md.relative_to(repo)), self._read(md, max_lines=500))
 
         return files
 
     def _collect_go_files(self, repo: Path, _add: Callable):
         go_mod = repo / "go.mod"
         if go_mod.exists():
-            content = self._read(go_mod)
-            _add("go.mod", self._strip_indirect_deps(content))
+            _add("go.mod", self._strip_indirect_deps(self._read(go_mod)))
 
         for api_dir in ["api", "pkg/apis", "apis"]:
             d = repo / api_dir
@@ -111,8 +111,8 @@ class DiscoveryAgent:
                 ctrl_file = self._find_controller_file(subdir)
                 if ctrl_file:
                     _add(str(ctrl_file.relative_to(repo)), self._read(ctrl_file))
-                for keyword in ["configmap", "statefulset", "daemonset", "deployment"]:
-                    matched = self._find_file_matching(subdir, keyword)
+                for kw in ["configmap", "statefulset", "daemonset", "deployment"]:
+                    matched = self._find_file_matching(subdir, kw)
                     if matched:
                         _add(str(matched.relative_to(repo)), self._read(matched))
 
@@ -145,20 +145,19 @@ class DiscoveryAgent:
     # Discovery prompt
     # ------------------------------------------------------------------
 
-    def _build_discovery_prompt(self, files_content: Dict[str, str], profile: RepoProfile) -> str:
+    def _build_discovery_prompt(self, files_content: Dict[str, str],
+                                profile: RepoProfile, max_decisions: int) -> str:
         system = (
             f"You are an expert software architect analyzing the source code of an "
             f"OpenShift {profile.repo_type} repository.\n"
             f"Primary language: {profile.primary_language}. "
             f"Category: {profile.openshift_category}.\n\n"
-            f"Read ALL the source code below carefully and identify 5-8 significant "
+            f"Read ALL the source code below carefully and identify {max_decisions} significant "
             f"architectural decisions embedded in this codebase.\n\n"
             f"A 'decision' is a DESIGN CHOICE that shapes the architecture — "
             f"NOT a library dependency, NOT a file existing, NOT build tooling.\n\n"
         )
-
         examples = self._get_decision_examples(profile)
-
         instructions = (
             f"Examples of real decisions to look for:\n{examples}\n\n"
             f"For each decision, return a JSON array (and NOTHING else — no markdown, "
@@ -174,18 +173,15 @@ class DiscoveryAgent:
             f"  }}\n"
             f"]\n\n"
             f"RULES:\n"
-            f"- DO NOT list standard framework dependencies (controller-runtime, client-go, "
-            f"cobra, library-go, React, Redux) as decisions\n"
-            f"- DO NOT list build tooling (Makefile, hack/ scripts, CI config) as decisions\n"
-            f"- DO NOT list 'uses Kubernetes' or 'uses OpenShift' as decisions\n"
+            f"- DO NOT list standard framework dependencies as decisions\n"
+            f"- DO NOT list build tooling (Makefile, hack/ scripts) as decisions\n"
             f"- Focus on what makes THIS repository's architecture UNIQUE\n"
             f"- Each decision must reference specific files from the source code below\n"
             f"- Return ONLY valid JSON, no other text\n\n"
         )
-
         code_section = "SOURCE CODE:\n\n"
-        for filepath, content in files_content.items():
-            code_section += f"=== {filepath} ===\n{content}\n\n"
+        for fp, content in files_content.items():
+            code_section += f"=== {fp} ===\n{content}\n\n"
 
         return system + instructions + code_section
 
@@ -196,38 +192,25 @@ class DiscoveryAgent:
             "- What security model is applied (SCCs, RBAC, mutual TLS, attestation)\n"
         )
         if profile.repo_type == "operator":
-            return (
-                common +
+            return (common +
                 "- How operands are deployed (StatefulSet vs DaemonSet vs Deployment, sidecar patterns)\n"
                 "- How controllers coordinate and report status to the platform\n"
                 "- How configuration is generated and delivered to managed components\n"
                 "- What operational modes exist (create-only, degraded, upgrade blocking)\n"
-                "- How upstream project integration works (vendoring, embedding, wrapping)\n"
-            )
+                "- How upstream project integration works (vendoring, embedding, wrapping)\n")
         elif profile.repo_type == "library":
-            return (
-                "- What abstractions are exported and what contracts they enforce\n"
+            return ("- What abstractions are exported and what contracts they enforce\n"
                 "- What extension points exist for consumers\n"
-                "- What patterns are standardized (factory, builder, observer)\n"
-                "- What versioning or compatibility strategy is used\n"
-            )
+                "- What patterns are standardized (factory, builder, observer)\n")
         elif profile.repo_type == "installer":
-            return (
-                "- What pipeline/workflow model is used for installation\n"
+            return ("- What pipeline/workflow model is used for installation\n"
                 "- What abstraction layers exist (platform, provider, asset)\n"
-                "- What validation and error handling strategy is applied\n"
-                "- How multi-cloud/multi-platform support is structured\n"
-            )
+                "- How multi-cloud/multi-platform support is structured\n")
         elif profile.repo_type == "console":
-            return (
-                common +
+            return (common +
                 "- What plugin architecture is used\n"
-                "- What state management pattern is applied\n"
-                "- What API integration and proxy strategy exists\n"
-                "- What component composition model is used\n"
-            )
-        else:
-            return common + "- Any significant structural or design patterns\n"
+                "- What state management pattern is applied\n")
+        return common + "- Any significant structural or design patterns\n"
 
     # ------------------------------------------------------------------
     # Response parsing
@@ -258,7 +241,6 @@ class DiscoveryAgent:
                 return []
 
         if not isinstance(decisions, list):
-            logger.error("Discovery response is not a JSON array")
             return []
 
         areas = []
@@ -267,7 +249,6 @@ class DiscoveryAgent:
                 continue
             key_files = d.get("key_files", [])
             valid_files = [f for f in key_files if (repo / f).exists()]
-
             areas.append(DecisionArea(
                 name=d["title"],
                 decision_type=d.get("decision_type", "design_pattern"),
@@ -275,8 +256,50 @@ class DiscoveryAgent:
                 key_files=valid_files if valid_files else key_files[:5],
                 significance=8.0,
             ))
-
         return areas
+
+    # ------------------------------------------------------------------
+    # OWNERS attachment
+    # ------------------------------------------------------------------
+
+    def _attach_owners(self, areas: List[DecisionArea], repo: Path):
+        cache: Dict[str, List[str]] = {}
+        for area in areas:
+            if area.owners:
+                continue
+            for fp in area.key_files:
+                approvers = self._find_owners_for(Path(fp).parent, repo, cache)
+                if approvers:
+                    area.owners = approvers
+                    break
+
+    def _find_owners_for(self, rel_dir: Path, repo: Path,
+                         cache: Dict[str, List[str]]) -> List[str]:
+        key = str(rel_dir)
+        if key in cache:
+            return cache[key]
+        search = repo / rel_dir
+        while True:
+            owners_file = search / "OWNERS"
+            if owners_file.exists():
+                approvers = self._parse_owners(owners_file)
+                cache[key] = approvers
+                return approvers
+            if search == repo or search == search.parent:
+                break
+            search = search.parent
+        cache[key] = []
+        return []
+
+    @staticmethod
+    def _parse_owners(owners_file: Path) -> List[str]:
+        try:
+            data = yaml.safe_load(owners_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data.get("approvers", []) or []
+        except Exception:
+            pass
+        return []
 
     # ------------------------------------------------------------------
     # Helpers
@@ -294,10 +317,7 @@ class DiscoveryAgent:
 
     @staticmethod
     def _strip_indirect_deps(go_mod_content: str) -> str:
-        return "\n".join(
-            line for line in go_mod_content.splitlines()
-            if "// indirect" not in line
-        )
+        return "\n".join(l for l in go_mod_content.splitlines() if "// indirect" not in l)
 
     @staticmethod
     def _find_controller_file(directory: Path) -> Optional[Path]:

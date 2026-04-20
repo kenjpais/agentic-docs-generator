@@ -10,62 +10,29 @@ superseded-by: [ADR-XXX if applicable]
 
 # [Decision Title]
 
-## Status
+## Executive Summary
+A quick summary of the decision.
 
-[proposed | accepted | deprecated | superseded by ADR-XXX]
+## What
+Short summary of what decision this document is reaching and what components it touches.
 
-## Context
+## Why
+Motivation behind the change, context, why a decision is needed.
 
-What is the issue or situation that motivates this decision?
+## Goals
+- Goal 1
+- Goal 2
 
-## Decision
+## Non-Goals
+- Non-goal 1
 
-What is the change that we're proposing/announcing?
+## How
+Full overview of the proposed/implemented solution.
 
-## Rationale
+## Alternatives
+Potential alternatives and why they were not chosen.
 
-Why did we choose this option?
-
-### Why This?
-- Reason 1
-- Reason 2
-
-### Why Not Alternatives?
-- Alternative A: [Why rejected]
-- Alternative B: [Why rejected]
-
-## Consequences
-
-### Positive
-- Benefit 1
-- Benefit 2
-
-### Negative
-- Tradeoff 1
-- Tradeoff 2
-
-### Neutral
-- Change 1
-
-## Implementation
-
-- **Location**: [Where in codebase]
-- **Migration**: [How to transition]
-- **Rollout**: [Deployment plan]
-
-## Alternatives Considered
-
-### Alternative 1: [Name]
-**Pros**: [Benefits]
-**Cons**: [Drawbacks]
-**Why rejected**: [Reason]
-
-## References
-
-- [Related ADR](./adr-xxx.md)
-- [Design doc](../design/xxx.md)
-- [External reference](https://...)
-
-## Notes
-
-[Any additional context, history, or discussion points]
+## Risks
+- Execution risk
+- Operational risk
+- Customer risk

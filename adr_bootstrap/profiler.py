@@ -5,12 +5,11 @@ import re
 import subprocess
 from collections import Counter
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Tuple
 
-from models import RepoProfile
+from .models import RepoProfile
 import logging
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SKIP_DIRS = {
@@ -20,18 +19,9 @@ SKIP_DIRS = {
 }
 
 LANG_EXTENSIONS = {
-    ".go": "go",
-    ".py": "python",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".java": "java",
-    ".rb": "ruby",
-    ".rs": "rust",
-    ".c": "c",
-    ".cpp": "cpp",
-    ".sh": "shell",
+    ".go": "go", ".py": "python", ".ts": "typescript", ".tsx": "typescript",
+    ".js": "javascript", ".jsx": "javascript", ".java": "java",
+    ".rb": "ruby", ".rs": "rust", ".c": "c", ".cpp": "cpp", ".sh": "shell",
 }
 
 
@@ -60,30 +50,16 @@ class RepoProfiler:
         repo_type = self._detect_repo_type(primary_lang, has_crd)
         os_category = self._detect_openshift_category(repo_type)
 
-        profile = RepoProfile(
-            path=str(self.repo_path),
-            name=name,
-            owner=owner,
-            primary_language=primary_lang,
-            repo_type=repo_type,
-            openshift_category=os_category,
-            languages_detected=dict(lang_counts),
-            has_owners=has_owners,
-            has_crd=has_crd,
-            has_go_mod=has_go_mod,
-            has_package_json=has_package_json,
-            has_requirements_txt=has_requirements,
+        p = RepoProfile(
+            path=str(self.repo_path), name=name, owner=owner,
+            primary_language=primary_lang, repo_type=repo_type,
+            openshift_category=os_category, languages_detected=dict(lang_counts),
+            has_owners=has_owners, has_crd=has_crd, has_go_mod=has_go_mod,
+            has_package_json=has_package_json, has_requirements_txt=has_requirements,
             has_pyproject_toml=has_pyproject,
         )
-        logger.info(
-            f"Profile: lang={primary_lang}, type={repo_type}, "
-            f"category={os_category}, languages={dict(lang_counts.most_common(5))}"
-        )
-        return profile
-
-    # ------------------------------------------------------------------
-    # Language detection
-    # ------------------------------------------------------------------
+        logger.info(f"Profile: lang={primary_lang}, type={repo_type}, category={os_category}")
+        return p
 
     def _count_languages(self) -> Counter:
         counts: Counter = Counter()
@@ -104,13 +80,8 @@ class RepoProfiler:
             return "mixed"
         return top[0][0]
 
-    # ------------------------------------------------------------------
-    # Repo type detection
-    # ------------------------------------------------------------------
-
     def _detect_repo_type(self, primary_lang: str, has_crd: bool) -> str:
         name_lower = self.repo_path.name.lower()
-
         if self._has_operator_framework_dep():
             return "operator"
         if self._has_api_types_dir():
@@ -121,7 +92,6 @@ class RepoProfiler:
             return "operator"
         if self._grep_go("OperatorCondition|olm\\.operatorframework\\.io"):
             return "operator"
-
         if "operator" in name_lower:
             return "operator"
         if "installer" in name_lower or "install" in name_lower:
@@ -130,22 +100,16 @@ class RepoProfiler:
             return "console"
         if "library" in name_lower or "client" in name_lower:
             return "library"
-
         if primary_lang == "typescript" and self._has_react():
             return "console"
-
         if self._has_cobra_commands():
             return "cli"
-
         if primary_lang == "go":
             if (self.repo_path / "cmd").is_dir():
-                main_files = list((self.repo_path / "cmd").rglob("main.go"))
-                if main_files:
+                if list((self.repo_path / "cmd").rglob("main.go")):
                     return "cli"
-            pkg = self.repo_path / "pkg"
-            if pkg.is_dir() and not (self.repo_path / "cmd").is_dir():
+            if (self.repo_path / "pkg").is_dir() and not (self.repo_path / "cmd").is_dir():
                 return "library"
-
         return "unknown"
 
     def _detect_openshift_category(self, repo_type: str) -> str:
@@ -157,22 +121,14 @@ class RepoProfiler:
             return "core_operator"
         if repo_type == "library":
             return "library"
-        if repo_type in ("installer", "cli", "console"):
-            return "unknown"
         return "unknown"
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     def _detect_owner_name(self) -> Tuple[str, str]:
         try:
             result = subprocess.run(
                 ["git", "config", "--get", "remote.origin.url"],
-                cwd=self.repo_path, capture_output=True, text=True, timeout=5
-            )
-            url = result.stdout.strip()
-            match = re.search(r"github\.com[:/]([^/]+)/([^/.\s]+)", url)
+                cwd=self.repo_path, capture_output=True, text=True, timeout=5)
+            match = re.search(r"github\.com[:/]([^/]+)/([^/.\s]+)", result.stdout.strip())
             if match:
                 return match.group(1), match.group(2)
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -188,54 +144,47 @@ class RepoProfiler:
 
     def _has_crd_files(self) -> bool:
         try:
-            result = subprocess.run(
-                ["rg", "kind:\\s*CustomResourceDefinition",
-                 str(self.repo_path), "--glob", "*.{yaml,yml}",
-                 "--files-with-matches", "--max-count", "1"],
-                capture_output=True, text=True, timeout=15
-            )
-            return bool(result.stdout.strip())
+            r = subprocess.run(
+                ["rg", "kind:\\s*CustomResourceDefinition", str(self.repo_path),
+                 "--glob", "*.{yaml,yml}", "--files-with-matches", "--max-count", "1"],
+                capture_output=True, text=True, timeout=15)
+            return bool(r.stdout.strip())
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
 
     def _grep_go(self, pattern: str) -> bool:
         try:
-            result = subprocess.run(
+            r = subprocess.run(
                 ["rg", pattern, str(self.repo_path),
                  "--glob", "*.go", "--max-count", "1", "--quiet"],
-                capture_output=True, timeout=15
-            )
-            return result.returncode == 0
+                capture_output=True, timeout=15)
+            return r.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
 
     def _has_react(self) -> bool:
-        pkg_json = self.repo_path / "package.json"
-        if not pkg_json.exists():
+        p = self.repo_path / "package.json"
+        if not p.exists():
             return False
         try:
-            content = pkg_json.read_text(encoding="utf-8")
-            return '"react"' in content
+            return '"react"' in p.read_text(encoding="utf-8")
         except OSError:
             return False
 
     def _has_operator_framework_dep(self) -> bool:
-        go_mod = self.repo_path / "go.mod"
-        if not go_mod.exists():
+        p = self.repo_path / "go.mod"
+        if not p.exists():
             return False
         try:
-            content = go_mod.read_text(encoding="utf-8")
-            return "operator-framework/api" in content or "operator-framework/operator-sdk" in content
+            c = p.read_text(encoding="utf-8")
+            return "operator-framework/api" in c or "operator-framework/operator-sdk" in c
         except OSError:
             return False
 
     def _has_api_types_dir(self) -> bool:
-        for candidate in ["api", "pkg/apis", "apis"]:
-            d = self.repo_path / candidate
-            if d.is_dir():
-                type_files = list(d.rglob("*_types.go"))
-                if type_files:
-                    return True
+        for d in ["api", "pkg/apis", "apis"]:
+            if (self.repo_path / d).is_dir() and list((self.repo_path / d).rglob("*_types.go")):
+                return True
         return False
 
     def _has_cobra_commands(self) -> bool:

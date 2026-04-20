@@ -18,11 +18,6 @@ from gemini_client import GeminiClient
 from llm_client import create_llm_client
 from doc_generator import DocumentationGenerator
 from agentic_doc_generator import AgenticDocumentationGenerator
-from repo_profiler import RepoProfiler
-from code_analyzer import CodeAnalyzer
-from history_lookup import HistoryLookup
-from enhancement_fetcher import EnhancementFetcher
-from adr_generator import ADRGenerator
 from utils import (
     load_environment_variables,
     validate_environment,
@@ -102,62 +97,23 @@ def main():
         # Bootstrap mode: code-first ADR generation
         # ---------------------------------------------------------------
         if args.mode == 'bootstrap':
-            logger.info(f"Bootstrap mode: analyzing codebase at {args.repo_path}")
+            from adr_bootstrap import generate_adrs
 
+            logger.info(f"Bootstrap mode: analyzing codebase at {args.repo_path}")
             llm = create_llm_client(args.llm)
 
-            profiler = RepoProfiler(args.repo_path)
-            profile = profiler.profile()
-            logger.info(f"Repo profile: {profile.repo_type} ({profile.openshift_category}), "
-                        f"lang={profile.primary_language}")
-
-            logger.info("Pass 1: LLM-driven decision discovery...")
-            analyzer = CodeAnalyzer(profile, llm_client=llm)
-            decision_areas = analyzer.analyze()
-            logger.info(f"Found {len(decision_areas)} decision areas")
-
-            if not decision_areas:
-                logger.warning("No architectural decision areas found")
-                sys.exit(0)
-
-            enhancement_fetcher = EnhancementFetcher()
-            if enhancement_fetcher.is_available():
-                logger.info("Enhancement fetcher available (gh CLI found)")
-            else:
-                logger.info("Enhancement fetcher not available (gh CLI not found)")
-                enhancement_fetcher = None
-
-            jira_client = None
-            jira_url = os.getenv("JIRA_BASE_URL", "https://redhat.atlassian.net")
-            try:
-                jira_client = JiraClient(base_url=jira_url)
-                logger.info(f"Jira client available ({jira_url})")
-            except Exception as e:
-                logger.warning(f"Jira client init failed (optional, continuing without): {e}")
-
-            history = HistoryLookup(
+            generated_paths = generate_adrs(
                 repo_path=args.repo_path,
-                jira_client=jira_client,
-                enhancement_fetcher=enhancement_fetcher,
-                repo_owner=profile.owner,
-                repo_name=profile.name,
+                output_dir=args.output,
+                llm_client=llm,
             )
-            logger.info("Enriching decision areas with history...")
-            history.enrich_all(decision_areas)
-
-            logger.info("Pass 2: Generating ADRs with full code context...")
-            generator = ADRGenerator(llm, args.output)
-            generated_paths = generator.generate_adrs(decision_areas, profile)
 
             print("\n" + "=" * 70)
             print("Bootstrap ADR Generation Complete")
             print("=" * 70)
-            print(f"\nRepository: {profile.owner}/{profile.name}")
-            print(f"Type: {profile.repo_type} ({profile.openshift_category})")
-            print(f"Language: {profile.primary_language}")
-            print(f"Decision areas found: {len(decision_areas)}")
+            print(f"\nRepository: {args.repo_path}")
             print(f"ADRs generated: {len(generated_paths)}")
-            print(f"\nOutput: {Path(args.output).absolute() / profile.name / 'agentic' / 'decisions'}")
+            print(f"\nOutput: {Path(args.output).absolute()}")
             print("\nGenerated ADRs:")
             for p in generated_paths:
                 print(f"  - {Path(p).name}")
